@@ -29,8 +29,25 @@
       background-color: #f8d7da;
       color: #721c24;
     }
-    h2 {
-      margin-bottom: 5px;
+    form {
+      margin-top: 20px;
+      padding: 10px;
+      border: 1px solid #ccc;
+      max-width: 400px;
+    }
+    input {
+      width: 100%;
+      padding: 5px;
+      margin: 6px 0;
+      box-sizing: border-box;
+    }
+    label {
+      display: block;
+      margin-top: 10px;
+    }
+    button {
+      margin-top: 10px;
+      padding: 8px 12px;
     }
   </style>
 </head>
@@ -39,6 +56,24 @@
 <h2>TLE9180 Startup Configuration CRC Verifier</h2>
 <p>Computing CRC3 (bits 23..3) using polynomial <code>x³ + x + 1</code>, seed <code>0b100</code></p>
 
+<!-- Input Form -->
+<form id="entryForm">
+  <label for="inputC">C (0 or 1):</label>
+  <input type="number" id="inputC" min="0" max="1" required>
+
+  <label for="inputADDR">Address (Hex):</label>
+  <input type="text" id="inputADDR" placeholder="e.g. 01" required>
+
+  <label for="inputDATA">Data (Hex):</label>
+  <input type="text" id="inputDATA" placeholder="e.g. 81" required>
+
+  <label for="inputCRC">CRC (Hex, optional):</label>
+  <input type="text" id="inputCRC" placeholder="e.g. 4">
+
+  <button type="submit">Add Entry</button>
+</form>
+
+<!-- Results Table -->
 <table id="crcTable">
   <thead>
     <tr>
@@ -51,8 +86,7 @@
       <th>Status</th>
     </tr>
   </thead>
-  <tbody>
-  </tbody>
+  <tbody></tbody>
 </table>
 
 <script>
@@ -77,12 +111,11 @@
     w |= (c & 0x1) << 23;
     w |= (addr & 0x7F) << 16;
     w |= (data & 0xFF) << 8;
-    // bits 7..3 are reserved and remain 0
     return w >>> 0;
   }
 
   function tle9180_crc3_tx24(frame_wo_crc) {
-    let lfsr = 0b100; // start value
+    let lfsr = 0b100;
     for (let i = 23; i >= 3; --i) {
       let bit = (frame_wo_crc >> i) & 1;
       let fb = bit ^ ((lfsr >> 2) & 1);
@@ -96,23 +129,55 @@
 
   const tbody = document.querySelector("#crcTable tbody");
 
-  startupConfig.forEach((entry, index) => {
+  function addRow(entry, index, isUserInput = false) {
     const frame_wo_crc = packTx24WoCrc(entry.ADDRESS, entry.DATA, entry.C);
     const computed_crc = tle9180_crc3_tx24(frame_wo_crc);
-    const pass = computed_crc === (entry.CRC & 0x7);
+    const hasInputCRC = entry.hasOwnProperty("CRC");
+    const pass = hasInputCRC ? (computed_crc === (entry.CRC & 0x7)) : "N/A";
 
     const row = document.createElement("tr");
-    row.className = pass ? "pass" : "fail";
+    row.className = pass === "N/A" ? "" : (pass ? "pass" : "fail");
     row.innerHTML = `
       <td>${index}</td>
       <td>${entry.C}</td>
       <td>0x${entry.ADDRESS.toString(16).padStart(2, '0').toUpperCase()}</td>
       <td>0x${entry.DATA.toString(16).padStart(2, '0').toUpperCase()}</td>
-      <td>0x${entry.CRC.toString(16).toUpperCase()}</td>
+      <td>${hasInputCRC ? "0x" + entry.CRC.toString(16).toUpperCase() : "-"}</td>
       <td>0x${computed_crc.toString(16).toUpperCase()}</td>
-      <td>${pass ? "PASS" : "FAIL"}</td>
+      <td>${pass === "N/A" ? "Computed" : (pass ? "PASS" : "FAIL")}</td>
     `;
     tbody.appendChild(row);
+  }
+
+  // Render initial entries
+  startupConfig.forEach((entry, index) => addRow(entry, index));
+
+  // Handle form input
+  document.getElementById("entryForm").addEventListener("submit", function (e) {
+    e.preventDefault();
+
+    const C = parseInt(document.getElementById("inputC").value, 10) || 0;
+    const ADDRESS = parseInt(document.getElementById("inputADDR").value, 16);
+    const DATA = parseInt(document.getElementById("inputDATA").value, 16);
+    const CRCinput = document.getElementById("inputCRC").value;
+
+    if (isNaN(ADDRESS) || isNaN(DATA)) {
+      alert("Invalid hex input for ADDRESS or DATA.");
+      return;
+    }
+
+    const newEntry = { C, ADDRESS, DATA };
+    if (CRCinput !== "") {
+      const CRC = parseInt(CRCinput, 16);
+      if (isNaN(CRC)) {
+        alert("Invalid CRC input.");
+        return;
+      }
+      newEntry.CRC = CRC;
+    }
+
+    addRow(newEntry, tbody.rows.length, true);
+    this.reset();
   });
 </script>
 
