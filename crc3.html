@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>TLE9180 CRC Verifier</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 30px;
+    }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      margin-top: 20px;
+    }
+    th, td {
+      border: 1px solid #ccc;
+      padding: 6px 10px;
+      text-align: center;
+    }
+    th {
+      background-color: #f2f2f2;
+    }
+    .pass {
+      background-color: #d4edda;
+      color: #155724;
+    }
+    .fail {
+      background-color: #f8d7da;
+      color: #721c24;
+    }
+    h2 {
+      margin-bottom: 5px;
+    }
+  </style>
+</head>
+<body>
+
+<h2>TLE9180 Startup Configuration CRC Verifier</h2>
+<p>Computing CRC3 (bits 23..3) using polynomial <code>x³ + x + 1</code>, seed <code>0b100</code></p>
+
+<table id="crcTable">
+  <thead>
+    <tr>
+      <th>Idx</th>
+      <th>C</th>
+      <th>ADDR</th>
+      <th>DATA</th>
+      <th>Given CRC</th>
+      <th>Computed CRC</th>
+      <th>Status</th>
+    </tr>
+  </thead>
+  <tbody>
+  </tbody>
+</table>
+
+<script>
+  const startupConfig = [
+    { C: 1, ADDRESS: 0x01, DATA: 0x81, CRC: 0x4 },
+    { C: 1, ADDRESS: 0x02, DATA: 0x0F, CRC: 0x0 },
+    { C: 1, ADDRESS: 0x06, DATA: 0x70, CRC: 0x6 },
+    { C: 1, ADDRESS: 0x07, DATA: 0x9A, CRC: 0x6 },
+    { C: 1, ADDRESS: 0x08, DATA: 0x32, CRC: 0x1 },
+    { C: 1, ADDRESS: 0x0A, DATA: 0x2A, CRC: 0x3 },
+    { C: 1, ADDRESS: 0x0B, DATA: 0x4A, CRC: 0x3 },
+    { C: 1, ADDRESS: 0x13, DATA: 0x2A, CRC: 0x5 },
+    { C: 1, ADDRESS: 0x00, DATA: 0xAC, CRC: 0x2 },
+    { C: 1, ADDRESS: 0x20, DATA: 0x44, CRC: 0x3 },
+    { C: 1, ADDRESS: 0x21, DATA: 0x44, CRC: 0x7 },
+    { C: 1, ADDRESS: 0x22, DATA: 0x44, CRC: 0x0 },
+    { C: 1, ADDRESS: 0x23, DATA: 0x9F, CRC: 0x0 }
+  ];
+
+  function packTx24WoCrc(addr, data, c) {
+    let w = 0;
+    w |= (c & 0x1) << 23;
+    w |= (addr & 0x7F) << 16;
+    w |= (data & 0xFF) << 8;
+    // bits 7..3 are reserved and remain 0
+    return w >>> 0;
+  }
+
+  function tle9180_crc3_tx24(frame_wo_crc) {
+    let lfsr = 0b100; // start value
+    for (let i = 23; i >= 3; --i) {
+      let bit = (frame_wo_crc >> i) & 1;
+      let fb = bit ^ ((lfsr >> 2) & 1);
+      let b2 = (lfsr >> 1) & 1;
+      let b1 = ((lfsr >> 0) & 1) ^ fb;
+      let b0 = fb;
+      lfsr = (b2 << 2) | (b1 << 1) | b0;
+    }
+    return lfsr & 0x7;
+  }
+
+  const tbody = document.querySelector("#crcTable tbody");
+
+  startupConfig.forEach((entry, index) => {
+    const frame_wo_crc = packTx24WoCrc(entry.ADDRESS, entry.DATA, entry.C);
+    const computed_crc = tle9180_crc3_tx24(frame_wo_crc);
+    const pass = computed_crc === (entry.CRC & 0x7);
+
+    const row = document.createElement("tr");
+    row.className = pass ? "pass" : "fail";
+    row.innerHTML = `
+      <td>${index}</td>
+      <td>${entry.C}</td>
+      <td>0x${entry.ADDRESS.toString(16).padStart(2, '0').toUpperCase()}</td>
+      <td>0x${entry.DATA.toString(16).padStart(2, '0').toUpperCase()}</td>
+      <td>0x${entry.CRC.toString(16).toUpperCase()}</td>
+      <td>0x${computed_crc.toString(16).toUpperCase()}</td>
+      <td>${pass ? "PASS" : "FAIL"}</td>
+    `;
+    tbody.appendChild(row);
+  });
+</script>
+
+</body>
+</html>
